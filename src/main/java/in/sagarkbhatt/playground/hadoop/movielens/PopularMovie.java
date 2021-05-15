@@ -5,6 +5,7 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapred.lib.ChainMapper;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Reducer;
@@ -15,9 +16,9 @@ import java.io.IOException;
 
 public class PopularMovie {
 
-    public static class MapperGetRating extends Mapper<Object, Text, Text, IntWritable> {
+    public static class MapperGetRating extends Mapper<Object, Text, Text, LongWritable> {
 
-        private final IntWritable one = new IntWritable(1);
+        private final LongWritable one = new LongWritable(1);
         private Text movieId = new Text();
 
         public void map(Object key, Text value, Context context) throws IOException, InterruptedException {
@@ -27,13 +28,13 @@ public class PopularMovie {
         }
     }
 
-    public static class CombinerGetRating extends Reducer<Text, IntWritable, Text, IntWritable> {
+    public static class CombinerGetRating extends Reducer<Text, IntWritable, Text, LongWritable> {
 
-        private IntWritable movieCount = new IntWritable();
+        private LongWritable movieCount = new LongWritable();
 
-        public void reduce(Text movieId, Iterable<IntWritable> values, Context context) throws IOException, InterruptedException {
+        public void reduce(Text movieId, Iterable<LongWritable> values, Context context) throws IOException, InterruptedException {
             int sum = 0;
-            for (IntWritable val : values) {
+            for (LongWritable val : values) {
                 sum += val.get();
             }
             movieCount.set(sum);
@@ -41,12 +42,12 @@ public class PopularMovie {
         }
     }
 
-    public static class ReducerGroupByRatingCount extends Reducer<Text, IntWritable, IntWritable, Text> {
-        private IntWritable movieCount = new IntWritable();
+    public static class ReducerGroupByRatingCount extends Reducer<Text, LongWritable, LongWritable, Text> {
+        private LongWritable movieCount = new LongWritable();
 
-        public void reduce(Text movieId, Iterable<IntWritable> values, Context context) throws IOException, InterruptedException {
+        public void reduce(Text movieId, Iterable<LongWritable> values, Context context) throws IOException, InterruptedException {
             int sum = 0;
-            for (IntWritable val : values) {
+            for (LongWritable val : values) {
                 sum += val.get();
             }
             movieCount.set(sum);
@@ -54,7 +55,20 @@ public class PopularMovie {
         }
     }
 
-    public static class ReducerSortedOutput extends Reducer<IntWritable, Text, Text, LongWritable> {
+    public static class MapKey extends Mapper<Object, Text, LongWritable, Text> {
+
+        private final LongWritable ratingCount = new LongWritable();
+        private Text movieId = new Text();
+
+        public void map(Object key, Text value, Context context) throws IOException, InterruptedException {
+            String[] data = value.toString().split("\t");
+            movieId.set(data[1]);
+            ratingCount.set(Long.parseLong(data[0]));
+            context.write(ratingCount, movieId);
+        }
+    }
+
+    public static class ReducerSortedOutput extends Reducer<LongWritable, Text, Text, LongWritable> {
 
         public void reduce(LongWritable ratingCount, Iterable<Text> movies, Context context) throws IOException, InterruptedException {
             for (Text movie : movies) {
@@ -68,14 +82,15 @@ public class PopularMovie {
 
         Job job1 = Job.getInstance(conf, "popular movie");
         job1.setJarByClass(PopularMovie.class);
+
         job1.setMapperClass(MapperGetRating.class);
         job1.setCombinerClass(CombinerGetRating.class);
         job1.setReducerClass(ReducerGroupByRatingCount.class);
 
         job1.setMapOutputKeyClass(Text.class);
-        job1.setMapOutputValueClass(IntWritable.class);
+        job1.setMapOutputValueClass(LongWritable.class);
 
-        job1.setOutputKeyClass(IntWritable.class);
+        job1.setOutputKeyClass(LongWritable.class);
         job1.setOutputValueClass(Text.class);
 
         FileInputFormat.addInputPath(job1, new Path(args[0]));
@@ -88,8 +103,8 @@ public class PopularMovie {
 
         Job job2 = Job.getInstance(conf, "popular movie");
         job2.setJarByClass(PopularMovie.class);
-        job2.setMapperClass(Mapper.class);
 
+        job2.setMapperClass(MapKey.class);
         job2.setReducerClass(ReducerSortedOutput.class);
 
         job2.setMapOutputKeyClass(LongWritable.class);
