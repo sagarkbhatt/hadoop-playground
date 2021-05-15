@@ -31,7 +31,7 @@ class CountMovieRatingTest {
     private CountMovieRating.TokenizerMapper mapper;
 
     @BeforeEach
-    public void setUp() throws Exception {
+    public void setUp() {
         mapper = new CountMovieRating.TokenizerMapper();
         reducer = new CountMovieRating.IntSumReducer();
     }
